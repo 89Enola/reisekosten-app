@@ -46,12 +46,12 @@ class ReisekostenApp extends StatelessWidget {
         useMaterial3: true,
         colorSchemeSeed: Colors.indigo,
         inputDecorationTheme: const InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white,
           labelStyle: TextStyle(color: Colors.black87),
           floatingLabelStyle: TextStyle(color: Colors.indigo),
         ),
-        textTheme: const TextTheme(
-          bodyMedium: TextStyle(color: Colors.black),
-        ),
+        textTheme: const TextTheme(bodyMedium: TextStyle(color: Colors.black)),
       ),
       home: const ReisekostenSeite(),
     );
@@ -78,8 +78,7 @@ class _ReisekostenSeiteState extends State<ReisekostenSeite> {
 
   String _ergebnis = '';
 
-  bool get _isIphone =>
-      kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+  bool get _isIphone => kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
   /// ===============================
   /// DATE PICKER
@@ -179,10 +178,7 @@ class _ReisekostenSeiteState extends State<ReisekostenSeite> {
   Future<void> _pdf() async {
     final pdf = pw.Document();
     pdf.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.a4,
-        build: (_) => pw.Text(_ergebnis),
-      ),
+      pw.Page(pageFormat: PdfPageFormat.a4, build: (_) => pw.Text(_ergebnis)),
     );
     await Printing.layoutPdf(onLayout: (_) async => pdf.save());
   }
@@ -192,15 +188,14 @@ class _ReisekostenSeiteState extends State<ReisekostenSeite> {
 
   String _num(double v) => v.toStringAsFixed(2).replaceAll('.', ',');
 
-  InputDecoration _dec(String label) =>
-      InputDecoration(labelText: label);
+  InputDecoration _dec(String label) => InputDecoration(labelText: label);
 
   TextField _field(TextEditingController c, String label) => TextField(
-        controller: c,
-        style: const TextStyle(color: Colors.black),
-        cursorColor: Colors.indigo,
-        decoration: _dec(label),
-      );
+    controller: c,
+    style: const TextStyle(color: Colors.black),
+    cursorColor: Colors.indigo,
+    decoration: _dec(label),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -213,8 +208,7 @@ class _ReisekostenSeiteState extends State<ReisekostenSeite> {
           removeBottom: false,
           child: ListView(
             padding: const EdgeInsets.all(16),
-            keyboardDismissBehavior:
-                ScrollViewKeyboardDismissBehavior.onDrag,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             children: [
               _field(_vorname, 'Vorname'),
               _field(_nachname, 'Nachname'),
@@ -238,28 +232,32 @@ class _ReisekostenSeiteState extends State<ReisekostenSeite> {
               ),
               const SizedBox(height: 16),
               ElevatedButton.icon(
-                onPressed:
-                    !_isIphone && daten.reisekostenGesamt > 0 ? _pdf : null,
+                onPressed: !_isIphone && daten.reisekostenGesamt > 0
+                    ? _pdf
+                    : null,
                 icon: const Icon(Icons.picture_as_pdf),
                 label: const Text('PDF exportieren'),
               ),
               if (_isIphone && _ergebnis.isNotEmpty) ...[
                 const SizedBox(height: 16),
                 ElevatedButton.icon(
-                  onPressed: () {},
                   icon: const Icon(Icons.text_snippet),
                   label: const Text('Text anzeigen'),
-                ),
-              ],
-              if (_ergebnis.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.indigo.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(_ergebnis),
+                  onPressed: () {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      builder: (_) => Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: SingleChildScrollView(
+                          child: Text(
+                            _ergebnis,
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ],
             ],
