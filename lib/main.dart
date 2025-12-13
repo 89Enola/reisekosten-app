@@ -45,15 +45,16 @@ class ReisekostenApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorSchemeSeed: Colors.indigo,
+        inputDecorationTheme: const InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white,
+        ),
       ),
       home: const ReisekostenSeite(),
     );
   }
 }
 
-/// ===============================
-/// HAUPTSEITE
-/// ===============================
 class ReisekostenSeite extends StatefulWidget {
   const ReisekostenSeite({super.key});
 
@@ -72,9 +73,7 @@ class _ReisekostenSeiteState extends State<ReisekostenSeite> {
   final _uePreis = TextEditingController();
   final _vorschuss = TextEditingController();
 
-  String _ergebnis = '';
-
-  bool get _isIphone =>
+  bool get _isWebIOS =>
       kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
   /// ===============================
@@ -108,23 +107,14 @@ class _ReisekostenSeiteState extends State<ReisekostenSeite> {
     });
   }
 
-  int _berechneUebernachtungen(DateTime start, DateTime ende) {
-    final s = DateTime(start.year, start.month, start.day);
-    final e = DateTime(ende.year, ende.month, ende.day);
-    return e.difference(s).inDays.clamp(0, 365);
-  }
-
   /// ===============================
-  /// BERECHNUNG
+  /// KORREKTE BERECHNUNG (DE)
   /// ===============================
   void _berechnen() {
     daten.vorname = _vorname.text.trim();
     daten.nachname = _nachname.text.trim();
 
-    if (daten.start == null || daten.ende == null) {
-      setState(() => _ergebnis = 'Start oder Ende fehlt.');
-      return;
-    }
+    if (daten.start == null || daten.ende == null) return;
 
     final start = daten.start!;
     final ende = daten.ende!;
@@ -132,13 +122,24 @@ class _ReisekostenSeiteState extends State<ReisekostenSeite> {
     daten.tage24h = 0;
     daten.tage8h = 0;
 
-    final diffHours = ende.difference(start).inHours;
+    final startDate = DateTime(start.year, start.month, start.day);
+    final endDate = DateTime(ende.year, ende.month, ende.day);
 
-    if (diffHours >= 24) {
-      daten.tage24h = diffHours ~/ 24;
-      if (diffHours % 24 >= 8) daten.tage8h = 1;
-    } else if (diffHours >= 8) {
-      daten.tage8h = 1;
+    if (startDate == endDate) {
+      if (ende.difference(start).inHours >= 8) {
+        daten.tage8h = 1;
+      }
+    } else {
+      final anreiseStunden =
+          startDate.add(const Duration(days: 1)).difference(start).inHours;
+      if (anreiseStunden >= 8) daten.tage8h++;
+
+      final abreiseStunden =
+          ende.difference(endDate).inHours;
+      if (abreiseStunden >= 8) daten.tage8h++;
+
+      final volleTage = endDate.difference(startDate).inDays - 1;
+      if (volleTage > 0) daten.tage24h = volleTage;
     }
 
     daten.betrag24h = daten.tage24h * 28;
@@ -149,7 +150,8 @@ class _ReisekostenSeiteState extends State<ReisekostenSeite> {
 
     daten.preisProUebernachtung =
         double.tryParse(_uePreis.text.replaceAll(',', '.')) ?? 0;
-    daten.uebernachtungen = _berechneUebernachtungen(start, ende);
+    daten.uebernachtungen =
+        endDate.difference(startDate).inDays.clamp(0, 365);
     daten.uebernachtungskosten =
         daten.uebernachtungen * daten.preisProUebernachtung;
 
@@ -164,16 +166,11 @@ class _ReisekostenSeiteState extends State<ReisekostenSeite> {
 
     daten.saldo = daten.reisekostenGesamt - daten.vorschuss;
 
-    setState(() {
-      _ergebnis =
-          'Reisekosten gesamt: ${_num(daten.reisekostenGesamt)}\n'
-          'Vorschuss: ${_num(daten.vorschuss)}\n'
-          '${daten.saldo >= 0 ? 'Auszahlung' : 'Rückzahlung'}: ${_num(daten.saldo.abs())}';
-    });
+    setState(() {});
   }
 
   /// ===============================
-  /// PDF
+  /// PDF – ORIGINAL TABELLE
   /// ===============================
   Future<void> _pdf() async {
     final pdf = pw.Document();
@@ -182,83 +179,65 @@ class _ReisekostenSeiteState extends State<ReisekostenSeite> {
       pw.Page(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(24),
-        build: (_) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Text(
-                'Reisekostenabrechnung',
-                style: pw.TextStyle(
-                  fontSize: 16,
-                  fontWeight: pw.FontWeight.bold,
+        build: (_) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(
+              'Reisekostenabrechnung',
+              style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 12),
+            _pdfLine('Name:', '${daten.vorname} ${daten.nachname}'),
+            _pdfLine('Reisebeginn:', _fmtDate(daten.start!)),
+            _pdfLine('Reiseende:', _fmtDate(daten.ende!)),
+            pw.SizedBox(height: 16),
+            pw.Table(
+              border: pw.TableBorder.all(),
+              columnWidths: {
+                0: const pw.FixedColumnWidth(320),
+                1: const pw.FixedColumnWidth(120),
+              },
+              children: [
+                _row('Kostenart', 'Betrag', header: true),
+
+                _sectionRow('I Fahrtkosten'),
+                _row(
+                  'Kilometerpauschale × ${daten.kilometer.toInt()}',
+                  _num(daten.kilometerBetrag),
                 ),
-              ),
-              pw.SizedBox(height: 16),
 
-              pw.Text('Name: ${daten.vorname} ${daten.nachname}'),
-              pw.Text('Reisebeginn: ${_fmtDate(daten.start!)}'),
-              pw.Text('Reiseende: ${_fmtDate(daten.ende!)}'),
+                _sectionRow('II Übernachtungskosten'),
+                _row(
+                  'Übernachtungen × ${daten.uebernachtungen}',
+                  _num(daten.uebernachtungskosten),
+                ),
 
-              pw.SizedBox(height: 16),
+                _sectionRow('III Verpflegungskosten'),
+                _row(
+                  '≥ 24 Stunden × ${daten.tage24h}',
+                  _num(daten.betrag24h),
+                ),
+                _row(
+                  '≥ 8 Stunden × ${daten.tage8h}',
+                  _num(daten.betrag8h),
+                ),
 
-              pw.Text('Kilometer: ${daten.kilometer}'),
-              pw.Text('Kilometerbetrag: ${_num(daten.kilometerBetrag)} €'),
-
-              pw.SizedBox(height: 8),
-
-              pw.Text(
-                  'Übernachtungen: ${daten.uebernachtungen} → ${_num(daten.uebernachtungskosten)} €'),
-
-              pw.SizedBox(height: 8),
-
-              pw.Text(
-                  'Verpflegung 24h: ${daten.tage24h} → ${_num(daten.betrag24h)} €'),
-              pw.Text(
-                  'Verpflegung 8h: ${daten.tage8h} → ${_num(daten.betrag8h)} €'),
-
-              pw.SizedBox(height: 16),
-
-              pw.Text(
-                'Gesamt: ${_num(daten.reisekostenGesamt)} €',
-                style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-              ),
-              pw.Text('Vorschuss: ${_num(daten.vorschuss)} €'),
-              pw.Text(
-                '${daten.saldo >= 0 ? 'Auszahlung' : 'Rückzahlung'}: ${_num(daten.saldo.abs())} €',
-                style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-              ),
-            ],
-          );
-        },
+                _row('', ''),
+                _row('Gesamt', _num(daten.reisekostenGesamt), bold: true),
+                _row('Vorschuss', _num(daten.vorschuss)),
+                _row(
+                  daten.saldo >= 0 ? 'Auszahlung' : 'Rückzahlung',
+                  _num(daten.saldo.abs()),
+                  bold: true,
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
 
     await Printing.layoutPdf(onLayout: (_) async => pdf.save());
-  }
-
-  /// ===============================
-  /// HELFER
-  /// ===============================
-  String _fmtDate(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-
-  String _num(double v) => v.toStringAsFixed(2).replaceAll('.', ',');
-
-  Widget _field(TextEditingController c, String label,
-      {TextInputType type = TextInputType.text}) {
-    return Container(
-      color: Colors.white, // 🔥 iOS Safari Fix
-      child: TextField(
-        controller: c,
-        keyboardType: type,
-        style: const TextStyle(color: Colors.black),
-        decoration: InputDecoration(
-          labelText: label,
-          filled: true,
-          fillColor: Colors.white,
-        ),
-      ),
-    );
   }
 
   /// ===============================
@@ -267,91 +246,102 @@ class _ReisekostenSeiteState extends State<ReisekostenSeite> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: true,
       appBar: AppBar(title: const Text('Reisekosten')),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          keyboardDismissBehavior:
-              ScrollViewKeyboardDismissBehavior.onDrag,
-          children: [
-            _field(_vorname, 'Vorname'),
-            _field(_nachname, 'Nachname'),
-            const Divider(),
-
-            GestureDetector(
-              onTap: () => _pickDateTime(true),
-              child: AbsorbPointer(child: _field(_start, 'Start')),
-            ),
-            GestureDetector(
-              onTap: () => _pickDateTime(false),
-              child: AbsorbPointer(child: _field(_ende, 'Ende')),
-            ),
-
-            const Divider(),
-
-            _field(_km, 'Kilometer', type: TextInputType.number),
-            _field(_uePreis, 'Preis pro Übernachtung',
-                type: TextInputType.number),
-            _field(_vorschuss, 'Vorschuss',
-                type: TextInputType.number),
-
-            const SizedBox(height: 24),
-
-            ElevatedButton(
-              onPressed: _berechnen,
-              child: const Text('Berechnen'),
-            ),
-
-            const SizedBox(height: 16),
-
-            ElevatedButton.icon(
-              onPressed:
-                  !_isIphone && daten.reisekostenGesamt > 0 ? _pdf : null,
-              icon: const Icon(Icons.picture_as_pdf),
-              label: const Text('PDF exportieren'),
-            ),
-
-            if (_isIphone && _ergebnis.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                icon: const Icon(Icons.text_snippet),
-                label: const Text('Text anzeigen'),
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          ReisekostenTextSeite(daten: daten),
-                    ),
-                  );
-                },
-              ),
-            ],
-
-            if (_ergebnis.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.indigo.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(_ergebnis),
-              ),
-            ],
-          ],
-        ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _field(_vorname, 'Vorname'),
+          _field(_nachname, 'Nachname'),
+          const Divider(),
+          _dateField(_start, 'Start', () => _pickDateTime(true)),
+          _dateField(_ende, 'Ende', () => _pickDateTime(false)),
+          const Divider(),
+          _field(_km, 'Kilometer'),
+          _field(_uePreis, 'Preis pro Übernachtung'),
+          _field(_vorschuss, 'Vorschuss'),
+          const SizedBox(height: 24),
+          ElevatedButton(onPressed: _berechnen, child: const Text('Berechnen')),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed:
+                !_isWebIOS && daten.reisekostenGesamt > 0 ? _pdf : null,
+            icon: const Icon(Icons.picture_as_pdf),
+            label: const Text('PDF exportieren'),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.text_snippet),
+            label: const Text('Text anzeigen'),
+            onPressed: daten.reisekostenGesamt > 0
+                ? () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ReisekostenTextSeite(daten: daten),
+                      ),
+                    )
+                : null,
+          ),
+        ],
       ),
     );
   }
+
+  /// ===============================
+  /// HELFER
+  /// ===============================
+  Widget _field(TextEditingController c, String l) =>
+      TextField(controller: c, decoration: InputDecoration(labelText: l));
+
+  Widget _dateField(
+    TextEditingController c,
+    String l,
+    VoidCallback onTap,
+  ) =>
+      GestureDetector(
+        onTap: onTap,
+        child: AbsorbPointer(
+          child: TextField(
+            controller: c,
+            decoration: InputDecoration(labelText: l),
+          ),
+        ),
+      );
+
+  String _fmtDate(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year} '
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+
+  String _num(double v) => v.toStringAsFixed(2).replaceAll('.', ',');
+
+  pw.Widget _pdfLine(String l, String v) =>
+      pw.Row(children: [pw.Text('$l '), pw.Text(v)]);
+
+  pw.TableRow _row(String l, String r,
+      {bool header = false, bool bold = false}) {
+    final style = pw.TextStyle(
+      fontWeight:
+          header || bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+    );
+    return pw.TableRow(children: [
+      pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(l, style: style)),
+      pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(r, style: style)),
+    ]);
+  }
+
+  pw.TableRow _sectionRow(String t) => pw.TableRow(children: [
+        pw.Padding(
+          padding: const pw.EdgeInsets.all(6),
+          child: pw.Text(t, style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+        ),
+        pw.Container(),
+      ]);
 }
 
 /// ===============================
-/// TEXT-ANSICHT (wie PDF)
+/// TEXTANSICHT = PDF-STRUKTUR
 /// ===============================
 class ReisekostenTextSeite extends StatelessWidget {
   final ReisekostenDaten daten;
-
   const ReisekostenTextSeite({super.key, required this.daten});
 
   String _num(double v) => v.toStringAsFixed(2).replaceAll('.', ',');
@@ -364,38 +354,28 @@ class ReisekostenTextSeite extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: ListView(
           children: [
-            Text('Reisekostenabrechnung',
-                style: Theme.of(context).textTheme.titleLarge),
+            const Text('Reisekostenabrechnung',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
-
             Text('Name: ${daten.vorname} ${daten.nachname}'),
             Text('Reisebeginn: ${daten.start}'),
             Text('Reiseende: ${daten.ende}'),
-
-            const Divider(height: 32),
-
-            Text('Kilometer: ${daten.kilometer}'),
+            const Divider(),
+            const Text('I Fahrtkosten', style: TextStyle(fontWeight: FontWeight.bold)),
             Text('Kilometerbetrag: ${_num(daten.kilometerBetrag)} €'),
-
-            const SizedBox(height: 12),
-
-            Text(
-                'Übernachtungen: ${daten.uebernachtungen} → ${_num(daten.uebernachtungskosten)} €'),
-
-            const SizedBox(height: 12),
-
-            Text(
-                'Verpflegung 24h: ${daten.tage24h} → ${_num(daten.betrag24h)} €'),
-            Text(
-                'Verpflegung 8h: ${daten.tage8h} → ${_num(daten.betrag8h)} €'),
-
-            const Divider(height: 32),
-
+            const Text('II Übernachtungskosten', style: TextStyle(fontWeight: FontWeight.bold)),
+            Text('Übernachtungen: ${_num(daten.uebernachtungskosten)} €'),
+            const Text('III Verpflegungskosten', style: TextStyle(fontWeight: FontWeight.bold)),
+            Text('24h: ${_num(daten.betrag24h)} €'),
+            Text('8h: ${_num(daten.betrag8h)} €'),
+            const Divider(),
             Text('Gesamt: ${_num(daten.reisekostenGesamt)} €',
                 style: const TextStyle(fontWeight: FontWeight.bold)),
             Text('Vorschuss: ${_num(daten.vorschuss)} €'),
             Text(
-              '${daten.saldo >= 0 ? 'Auszahlung' : 'Rückzahlung'}: ${_num(daten.saldo.abs())} €',
+              daten.saldo >= 0
+                  ? 'Auszahlung: ${_num(daten.saldo)} €'
+                  : 'Rückzahlung: ${_num(daten.saldo.abs())} €',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ],
