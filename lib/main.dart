@@ -21,6 +21,7 @@ class ReisekostenDaten {
   double betrag8h = 0;
 
   // Fahrtkosten
+  double benzin = 0;
   double kilometer = 0;
   double kilometerBetrag = 0;
 
@@ -28,6 +29,10 @@ class ReisekostenDaten {
   int uebernachtungen = 0;
   double preisProUebernachtung = 0;
   double uebernachtungskosten = 0;
+
+  // Sonstige
+  double fruehstueck = 0;
+  double fruehstueckBetrag = 0;
 
   // Vorschuss / Summen
   double vorschuss = 0;
@@ -82,6 +87,8 @@ class _ReisekostenSeiteState extends State<ReisekostenSeite> {
   final _km = TextEditingController();
   final _uePreis = TextEditingController();
   final _vorschuss = TextEditingController();
+  final _benzin = TextEditingController();
+  final _fruehstueck = TextEditingController();
 
   String _ergebnis = '';
 
@@ -96,6 +103,8 @@ class _ReisekostenSeiteState extends State<ReisekostenSeite> {
     _km.dispose();
     _uePreis.dispose();
     _vorschuss.dispose();
+    _benzin.dispose();
+    _fruehstueck.dispose();
     super.dispose();
   }
 
@@ -131,7 +140,7 @@ class _ReisekostenSeiteState extends State<ReisekostenSeite> {
   }
 
   /// ===============================
-  /// ÜBERNACHTUNGEN (AUTOMATISCH) – wie ursprünglich
+  /// ÜBERNACHTUNGEN (AUTOMATISCH)
   /// ===============================
   int _berechneUebernachtungen(DateTime start, DateTime ende) {
     final s = DateTime(start.year, start.month, start.day);
@@ -141,7 +150,7 @@ class _ReisekostenSeiteState extends State<ReisekostenSeite> {
   }
 
   /// ===============================
-  /// BERECHNUNG – wie ursprünglich (8h Start/Ende + volle Tage 24h)
+  /// BERECHNUNG (8h Start/Ende + volle Tage 24h)
   /// ===============================
   void _berechnen() {
     daten.vorname = _vorname.text.trim();
@@ -186,6 +195,9 @@ class _ReisekostenSeiteState extends State<ReisekostenSeite> {
     daten.betrag24h = daten.tage24h * 28;
     daten.betrag8h = daten.tage8h * 14;
 
+    // ---------------- BENZIN
+    daten.benzin = double.tryParse(_benzin.text.replaceAll(',', '.')) ?? 0;
+
     // ---------------- KILOMETER
     daten.kilometer = double.tryParse(_km.text.replaceAll(',', '.')) ?? 0;
     daten.kilometerBetrag = daten.kilometer * 0.30;
@@ -195,11 +207,15 @@ class _ReisekostenSeiteState extends State<ReisekostenSeite> {
     daten.uebernachtungen = _berechneUebernachtungen(start, ende);
     daten.uebernachtungskosten = daten.uebernachtungen * daten.preisProUebernachtung;
 
+    // ---------------- FRÜHSTÜCK
+    daten.fruehstueck = double.tryParse(_fruehstueck.text.replaceAll(',', '.')) ?? 0;
+    daten.fruehstueckBetrag = daten.fruehstueck * 5.60;
+
     // ---------------- VORSCHUSS
     daten.vorschuss = double.tryParse(_vorschuss.text.replaceAll(',', '.')) ?? 0;
 
     // ---------------- SUMMEN
-    daten.reisekostenGesamt = daten.betrag24h + daten.betrag8h + daten.kilometerBetrag + daten.uebernachtungskosten;
+    daten.reisekostenGesamt = daten.betrag24h + daten.betrag8h + daten.benzin + daten.kilometerBetrag + daten.uebernachtungskosten - daten.fruehstueckBetrag;
     daten.saldo = daten.reisekostenGesamt - daten.vorschuss;
 
     setState(() {
@@ -243,6 +259,9 @@ class _ReisekostenSeiteState extends State<ReisekostenSeite> {
                   _row('Kostenart', 'Rechnungs- bzw.\nPauschbetrag', header: true),
                   _sectionRow('I Fahrtkosten'),
                   _row(
+                    'Kosten für Benzin', _num(daten.benzin),
+                  ),
+                  _row(
                     'Kilometerpauschale (0,30 pro km) x ${daten.kilometer.toInt()}',
                     _num(daten.kilometerBetrag),
                   ),
@@ -259,6 +278,11 @@ class _ReisekostenSeiteState extends State<ReisekostenSeite> {
                   _row(
                     'Bei Abwesenheit von mindestens 8 Stunden x ${daten.tage8h}',
                     _num(daten.betrag8h),
+                  ),
+                  _sectionRow('IV Nebenkosten'),
+                  _row(
+                    'Frühstück x ${daten.fruehstueck.toInt()}',
+                    _num(daten.fruehstueckBetrag),
                   ),
                   _row('', ''),
                   _row('Reisekosten gesamt', _num(daten.reisekostenGesamt), bold: true),
@@ -391,8 +415,10 @@ class _ReisekostenSeiteState extends State<ReisekostenSeite> {
 
             const Divider(),
 
+            _field(_benzin, 'Kosten für Tanken', keyboardType: const TextInputType.numberWithOptions(decimal: true)),
             _field(_km, 'Kilometer', keyboardType: const TextInputType.numberWithOptions(decimal: true)),
             _field(_uePreis, 'Preis pro Übernachtung', keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+            _field(_fruehstueck, 'Anzahl Frühstück', keyboardType: const TextInputType.numberWithOptions(decimal: true)),
             _field(_vorschuss, 'Vorschuss', keyboardType: const TextInputType.numberWithOptions(decimal: true)),
 
             const SizedBox(height: 24),
@@ -537,6 +563,10 @@ class TextUebersichtSeite extends StatelessWidget {
 
               _section('I Fahrtkosten'),
               _tRow(
+                'Kosten für Benzin',
+                numFmt(daten.benzin),
+              ),
+              _tRow(
                 'Kilometerpauschale (0,30 pro km) x ${daten.kilometer.toInt()}',
                 numFmt(daten.kilometerBetrag),
               ),
@@ -547,6 +577,9 @@ class TextUebersichtSeite extends StatelessWidget {
               _section('III Verpflegungskosten'),
               _tRow('Bei Abwesenheit von mindestens 24 Stunden x ${daten.tage24h}', numFmt(daten.betrag24h)),
               _tRow('Bei Abwesenheit von mindestens 8 Stunden x ${daten.tage8h}', numFmt(daten.betrag8h)),
+
+              _section('IV Nebenkosten'),
+              _tRow('Frühstück x ${daten.fruehstueck.toInt()}', numFmt(daten.fruehstueckBetrag)),
 
               _tRow('', ''),
 
