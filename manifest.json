@@ -1,6 +1,6 @@
 {
-    "name": "reisekosten_app",
-    "short_name": "reisekosten_app",
+    "name": "Reisekosten",
+    "short_name": "Reisekosten",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
